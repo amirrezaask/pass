@@ -39,7 +39,6 @@ func (d db) AsBytes() ([]byte, error) {
 
 func (d db) FromReader(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
-	database := db{}
 	for scanner.Scan() {
 		line := scanner.Text()
 		splitted := strings.Split(line, ",")
@@ -47,7 +46,7 @@ func (d db) FromReader(r io.Reader) error {
 			fmt.Printf("ERROR not a valid row: %v\n", line)
 			continue
 		}
-		database[splitted[0]] = &UserPass{
+		d[splitted[0]] = &UserPass{
 			Username: splitted[1],
 			Password: splitted[2],
 		}
@@ -69,8 +68,6 @@ var addCmd = &cobra.Command{
 	Short: ``,
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("add")
-		fmt.Println(args)
 		if len(args) < 3 {
 			panic(args)
 		}
@@ -98,16 +95,16 @@ var deleteCmd = &cobra.Command{
 	},
 }
 
-var viewCmd = &cobra.Command{Use: ``,
+var viewCmd = &cobra.Command{
+	Use: `view name`,
 	Short: `view name`,
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("view")
-		if len(args) < 2 {
+		if len(args) < 1 {
 			panic(args)
 		}
-		name := args[1]
-		fmt.Println(DB[name])
+		name := args[0]
+		fmt.Printf("Username: %s, Password: %s\n", DB[name].Username, DB[name].Password)
 	},
 }
 
@@ -146,12 +143,10 @@ func main() {
 		log.Fatalln(err)
 	}
 	//save changes to db
-	fmt.Println("saving...")
 	bsOut, err := DB.AsBytes()
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(string(bsOut))
 	_, err = f.WriteAt(bsOut, 0)
 	if err != nil {
 		log.Fatalln(err)

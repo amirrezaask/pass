@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 )
@@ -15,12 +16,8 @@ import (
 // placing the result in outFilename (or filename + ".enc" if outFilename is
 // empty). The key has to be 16, 24 or 32 bytes long to select between AES-128,
 // AES-192 or AES-256. Returns the name of the output file if successful.
-func encryptFile(key []byte, filename string, outFilename string) ([]byte, error) {
-	if len(outFilename) == 0 {
-		outFilename = filename + ".enc"
-	}
-
-	plaintext, err := ioutil.ReadFile(filename)
+func encryptFile(key []byte, input io.Reader, outFilename string) ([]byte, error) {
+	plaintext, err := ioutil.ReadAll(input)
 	if err != nil {
 		return nil, err
 	}
@@ -74,21 +71,11 @@ func encryptFile(key []byte, filename string, outFilename string) ([]byte, error
 
 // decryptFile decrypts the file specified by filename with the given key. See
 // doc for encryptFile for more details.
-func decryptFile(key []byte, filename string, outFilename string) ([]byte, error) {
-	if len(outFilename) == 0 {
-		outFilename = filename + ".dec"
-	}
-
-	ciphertext, err := ioutil.ReadFile(filename)
+func decryptFile(key []byte, input io.Reader) ([]byte, error) {
+	ciphertext, err := ioutil.ReadAll(input)
 	if err != nil {
 		return nil, err
 	}
-
-	of, err := os.Create(outFilename)
-	if err != nil {
-		return nil, err
-	}
-	defer of.Close()
 
 	// cipertext has the original plaintext size in the first 8 bytes, then IV
 	// in the next 16 bytes, then the actual ciphertext in the rest of the buffer.
