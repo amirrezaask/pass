@@ -87,10 +87,10 @@ var deleteCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("delete")
-		if len(args) < 2 {
+		if len(args) < 1 {
 			panic(args)
 		}
-		name := args[1]
+		name := args[0]
 		delete(DB, name)
 	},
 }
