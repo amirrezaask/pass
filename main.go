@@ -1,81 +1,18 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/csv"
 	"fmt"
 	"github.com/spf13/cobra"
-	"io"
-	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 )
 
 type UserPass struct {
-	Username string
-	Password string
-}
-
-func csvRow(values ...string) string {
-	return strings.Join(values, ",")
-}
-
-type db map[string]*UserPass
-
-func (d db) recordsEncrypted() [][]string {
-	var records [][]string
-	for name, up := range d {
-		records = append(records, []string{encrypt(key, csvRow(name, up.Username, up.Password))})
-	}
-	return records
-}
-
-func (d db) records() [][]string {
-	var records [][]string
-	for name, up := range d {
-		records = append(records, []string{name, up.Username, up.Password})
-	}
-	return records
-}
-
-func (d db) AsBytes() ([]byte, error) {
-	var bs []byte
-	buf := bytes.NewBuffer(bs)
-	writer := csv.NewWriter(buf)
-	err := writer.WriteAll(d.records())
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-func (d db) AsEncryptedBytes() ([]byte, error) {
-	var bs []byte
-	buf := bytes.NewBuffer(bs)
-	writer := csv.NewWriter(buf)
-	err := writer.WriteAll(d.recordsEncrypted())
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func (d db) FromReader(r io.Reader) error {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Text()
-		line = decrypt(key, line)
-		splitted := strings.Split(line, ",")
-		if len(splitted) < 3 {
-			return fmt.Errorf("corrupt entry in database")
-		}
-		d[splitted[0]] = &UserPass{
-			Username: splitted[1],
-			Password: splitted[2],
-		}
-	}
-	return nil
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 var rootCmd = &cobra.Command{
@@ -98,9 +35,15 @@ var addCmd = &cobra.Command{
 		name := args[0]
 		username := args[1]
 		password := args[2]
-		DB[name] = &UserPass{
-			Username: username,
-			Password: password,
+
+		err := db.Add(&UserPass{
+			Name:     name,
+			URL:      "",
+			Username: encrypt(key, username),
+			Password: encrypt(key, password),
+		})
+		if err != nil {
+			panic(err)
 		}
 	},
 }
@@ -115,7 +58,9 @@ var deleteCmd = &cobra.Command{
 			panic(args)
 		}
 		name := args[0]
-		delete(DB, name)
+		if err := db.Delete(name); err!=nil {
+			log.Fatalln(err)
+		}
 	},
 }
 
@@ -128,14 +73,46 @@ var viewCmd = &cobra.Command{
 			panic(args)
 		}
 		name := args[0]
-		if _, exists := DB[name]; !exists {
-			fmt.Printf("no password with name %s found\n", name)
-			return
+		up, err := db.Get(name)
+		if err != nil {
+			log.Fatalln(err)
 		}
-		fmt.Printf("Username: %s\nPassword: %s\n", DB[name].Username, DB[name].Password)
+
+		fmt.Printf("Username: %s\nPassword: %s\n", decrypt(key, up.Username), decrypt(key, up.Password))
 	},
 }
-
+func fromCSV(path string) error {
+	f, err := os.OpenFile(path, os.O_RDONLY, 0000)
+	if err != nil {
+		return err
+	}
+	rows, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		name := row[0]
+		username := row[1]
+		password := row[2]
+		exists, err := db.Exists(row[0])
+		if err != nil {
+			return err
+		}
+		if exists {
+			name = name + "2"
+		}
+		err = db.Add(&UserPass{
+			Name:     name,
+			URL:      "",
+			Username: encrypt(key, username),
+			Password: encrypt(key, password),
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 var importCmd = &cobra.Command{
 	Use:   `import format filepath`,
 	Short: "import format filepath",
@@ -153,76 +130,50 @@ var importCmd = &cobra.Command{
 		} else if format == "csv" {
 			err := fromCSV(args[1])
 			if err != nil {
-			    panic(err)
-			}
-		}
-	},
-}
-var exportCmd = &cobra.Command{
-	Use: `export format filepath`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) < 2 {
-			panic(args)
-		}
-		format := args[0]
-		if format == "csv" {
-			bs, err := DB.AsBytes()
-			if err != nil {
-				panic(err)
-			}
-			if err = ioutil.WriteFile(args[1], bs, 0644); err != nil {
 				panic(err)
 			}
 		}
 	},
 }
+//var exportCmd = &cobra.Command{
+//	Use: `export format filepath`,
+//	Run: func(cmd *cobra.Command, args []string) {
+//		if len(args) < 2 {
+//			panic(args)
+//		}
+//		format := args[0]
+//		if format == "csv" {
+//			bs, err := DB.AsBytes()
+//			if err != nil {
+//				panic(err)
+//			}
+//			if err = ioutil.WriteFile(args[1], bs, 0644); err != nil {
+//				panic(err)
+//			}
+//		} else if format == "json" {
+//			bs, err := json.Marshal(DB)
+//			if err != nil {
+//				panic(err)
+//			}
+//			if err = ioutil.WriteFile(args[1], bs, 0644); err != nil {
+//				panic(err)
+//			}
+//		}
+//	},
+//}
 
 func init() {
-	rootCmd.AddCommand(addCmd, deleteCmd, viewCmd, importCmd, exportCmd)
+	rootCmd.AddCommand(addCmd, deleteCmd, viewCmd, importCmd)
 }
 
 var key []byte
-var DB db
+var db *DB
 
 func getEnv(key string, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
-}
-
-func fromCSV(path string) error {
-	f, err := os.OpenFile(path, os.O_RDONLY, 0000)
-	if err != nil {
-		return err
-	}
-	rows, err := csv.NewReader(f).ReadAll()
-	if err != nil {
-		return err
-	}
-	DB := db{}
-	for _, row := range rows {
-		name := row[0]
-		username := row[1]
-		password := row[2]
-		if _, exists := DB[row[0]]; exists {
-			name = name + "2"
-		}
-		DB[name] = &UserPass{
-			Username: username,
-			Password: password,
-		}
-	}
-
-	bs, err := DB.AsEncryptedBytes()
-	if err != nil {
-		return err
-	}
-	err = ioutil.WriteFile(filename, bs, 0644)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func fromLastPassCSV(path string) error {
@@ -234,58 +185,45 @@ func fromLastPassCSV(path string) error {
 	if err != nil {
 		return err
 	}
-	DB := db{}
 	for _, row := range rows {
 		name := row[5]
 		username := row[1]
 		password := row[2]
-		if _, exists := DB[row[5]]; exists {
+		exists, err := db.Exists(row[5])
+		if err != nil {
+			return err
+		}
+		if exists {
 			name = name + "2"
 		}
-		DB[name] = &UserPass{
-			Username: username,
-			Password: password,
+		err = db.Add(&UserPass{
+			Name:     name,
+			URL:      "",
+			Username: encrypt(key, username),
+			Password: encrypt(key, password),
+		})
+		if err != nil {
+			return err
 		}
 	}
-
-	bs, err := DB.AsEncryptedBytes()
-	if err != nil {
-		return err
-	}
-	err = ioutil.WriteFile(filename, bs, 0644)
-	if err != nil {
-		return err
-	}
 	return nil
+
 }
 
 var filename = getEnv("PASS_FILE", os.Getenv("HOME")+"/.pass")
+
 func main() {
 	key = []byte(getEnv("PASS_KEY", ""))
 	if key == nil {
 		log.Fatalln("Set PASS_KEY env.")
 	}
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0600)
+	var err error
+	db, err = NewDB(filename)
 	if err != nil {
-		log.Fatalln(err)
+	    log.Fatalln(err)
 	}
-	DB = db{}
-	err = DB.FromReader(f)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
+	defer db.conn.Close()
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalln(err)
 	}
-	//save changes to db
-	bsOut, err := DB.AsEncryptedBytes()
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = f.WriteAt(bsOut, 0)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	f.Close()
 }
