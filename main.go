@@ -17,15 +17,19 @@ type UserPass struct {
 	Password string
 }
 
+func csvRow(values ...string) string {
+	return strings.Join(values, ",")
+}
 type db map[string]*UserPass
 
 func (d db) records() [][]string {
 	var records [][]string
 	for name, up := range d {
-		records = append(records, []string{name, up.Username, up.Password})
+		records = append(records, []string{encrypt(key, csvRow(name, up.Username, up.Password))})
 	}
 	return records
 }
+
 func (d db) AsBytes() ([]byte, error) {
 	var bs []byte
 	buf := bytes.NewBuffer(bs)
@@ -41,6 +45,7 @@ func (d db) FromReader(r io.Reader) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
+		line = decrypt(key, line)
 		splitted := strings.Split(line, ",")
 		if len(splitted) < 3 {
 			fmt.Printf("ERROR not a valid row: %v\n", line)
@@ -112,7 +117,7 @@ func init() {
 	rootCmd.AddCommand(addCmd, deleteCmd, viewCmd)
 }
 
-var key string
+var key []byte
 var DB db
 
 func getEnv(key string, fallback string) string {
@@ -123,8 +128,8 @@ func getEnv(key string, fallback string) string {
 }
 
 func main() {
-	key = getEnv("PASSWORDS_KEY", "")
-	if key == "" {
+	key = []byte(getEnv("PASSWORDS_KEY", ""))
+	if key == nil {
 		log.Fatalln("Set PASSWORDS_KEY env.")
 	}
 	filename := getEnv("PASSWORDS_FILE", "~/.config/passwords.csv")
