@@ -109,7 +109,7 @@ var viewCmd = &cobra.Command{
 			panic(args)
 		}
 		name := args[0]
-		fmt.Printf("Username: %s, Password: %s\n", DB[name].Username, DB[name].Password)
+		fmt.Printf("Username: %s\nPassword: %s\n", DB[name].Username, DB[name].Password)
 	},
 }
 
@@ -132,7 +132,7 @@ func main() {
 	if key == nil {
 		log.Fatalln("Set PASSWORDS_KEY env.")
 	}
-	filename := getEnv("PASSWORDS_FILE", "~/.config/passwords.csv")
+	filename := getEnv("PASSWORDS_FILE", "~/.passwords")
 	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0600)
 	//bs, err := decryptFile([]byte(key), filename)
 	if err != nil {
