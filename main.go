@@ -68,8 +68,7 @@ func (d db) FromReader(r io.Reader) error {
 		line = decrypt(key, line)
 		splitted := strings.Split(line, ",")
 		if len(splitted) < 3 {
-			fmt.Printf("ERROR not a valid row: %v\n", line)
-			continue
+			return fmt.Errorf("corrupt entry in database")
 		}
 		d[splitted[0]] = &UserPass{
 			Username: splitted[1],
