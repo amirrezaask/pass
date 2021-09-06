@@ -1,4 +1,4 @@
-module github.com/amirrezaask/passwordmanager
+module github.com/amirrezaask/pass
 
 go 1.17
 
